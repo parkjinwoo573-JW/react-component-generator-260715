@@ -1,5 +1,6 @@
 import { stripCodeFences, ensureRenderCall } from './generator';
 import { withModelFallback } from './fallback';
+import { callAnthropicStream, callGoogleStream, eventStreamChunk } from './streaming';
 
 // 우선순위 순서. 앞 모델이 실패하면 다음 모델로 폴백한다.
 const GOOGLE_MODELS = ['gemini-3.1-flash-lite', 'gemini-3.5-flash'];
@@ -180,14 +181,40 @@ const server = Bun.serve({
           );
         }
 
-        const text =
-          provider === 'google'
-            ? await callGoogle(prompt, resolvedKey)
-            : await callAnthropic(prompt, resolvedKey);
+        const streamGen = provider === 'google'
+          ? callGoogleStream(prompt, resolvedKey)
+          : callAnthropicStream(prompt, resolvedKey);
 
-        const code = ensureRenderCall(stripCodeFences(text));
+        const encoder = new TextEncoder();
+        const readableStream = new ReadableStream({
+          async start(controller) {
+            try {
+              let fullText = '';
+              for await (const chunk of streamGen) {
+                fullText += chunk;
+                controller.enqueue(encoder.encode(eventStreamChunk(chunk)));
+              }
+              const code = ensureRenderCall(stripCodeFences(fullText));
+              controller.enqueue(encoder.encode(eventStreamChunk(`[CODE]${code}[/CODE]`)));
+              controller.enqueue(encoder.encode(eventStreamChunk('[DONE]')));
+              controller.close();
+            } catch (err) {
+              const message = err instanceof Error ? err.message : 'Unknown error';
+              controller.enqueue(encoder.encode(eventStreamChunk(`[ERROR]${message}[/ERROR]`)));
+              controller.close();
+            }
+          },
+        });
 
-        return Response.json({ code }, { headers: CORS_HEADERS });
+        return new Response(readableStream, {
+          status: 200,
+          headers: {
+            ...CORS_HEADERS,
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive',
+          },
+        });
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Unknown error';
 
