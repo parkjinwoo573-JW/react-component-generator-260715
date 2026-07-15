@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type { GeneratedComponent } from '../types';
 import {
   HISTORY_STORAGE_KEY,
@@ -115,5 +115,32 @@ describe('loadHistory / saveHistory', () => {
     saveHistory([makeComponent()]);
 
     expect(localStorage.getItem(HISTORY_STORAGE_KEY)).not.toBeNull();
+  });
+
+  it('저장된 원본 데이터가 MAX_HISTORY_SIZE를 초과해도 loadHistory는 최근 항목만 반환한다', () => {
+    const raw = Array.from({ length: MAX_HISTORY_SIZE + 5 }, (_, i) => ({
+      id: String(i),
+      prompt: 'p',
+      code: 'c',
+      createdAt: '2026-07-15T10:00:00.000Z',
+    }));
+    localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(raw));
+
+    const result = loadHistory();
+
+    expect(result).toHaveLength(MAX_HISTORY_SIZE);
+    expect(result.map((c) => c.id)).toEqual(
+      Array.from({ length: MAX_HISTORY_SIZE }, (_, i) => String(i)),
+    );
+  });
+
+  it('localStorage 쓰기가 실패해도 예외를 던지지 않는다', () => {
+    const setItemSpy = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('QuotaExceededError');
+    });
+
+    expect(() => saveHistory([makeComponent()])).not.toThrow();
+
+    setItemSpy.mockRestore();
   });
 });

@@ -78,6 +78,17 @@ describe('useComponentGenerator - 히스토리 영속화', () => {
     expect(loadHistory()).toEqual([]);
   });
 
+  it('마운트 시점에는 방금 불러온 히스토리를 다시 저장하지 않는다', () => {
+    saveHistory([makeComponent({ id: 'stored-1' })]);
+    const setItemSpy = vi.spyOn(Storage.prototype, 'setItem');
+    setItemSpy.mockClear();
+
+    renderHook(() => useComponentGenerator());
+
+    expect(setItemSpy).not.toHaveBeenCalled();
+    setItemSpy.mockRestore();
+  });
+
   it('컴포넌트 개수가 MAX_HISTORY_SIZE를 넘으면 가장 오래된 항목이 화면과 저장소에서 사라진다', async () => {
     const existing = Array.from({ length: MAX_HISTORY_SIZE }, (_, i) =>
       makeComponent({ id: `old-${i}` }),

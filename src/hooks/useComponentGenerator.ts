@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import type { GeneratedComponent, Provider } from '../types';
 import { loadHistory, saveHistory, capHistory, MAX_HISTORY_SIZE } from '../utils/componentHistory';
 
@@ -16,7 +16,12 @@ export function useComponentGenerator(): UseComponentGeneratorReturn {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const isMounted = useRef(false);
   useEffect(() => {
+    if (!isMounted.current) {
+      isMounted.current = true;
+      return;
+    }
     saveHistory(components);
   }, [components]);
 
